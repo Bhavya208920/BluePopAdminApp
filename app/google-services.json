@@ -1,0 +1,35 @@
+{
+  "project_info": {
+    "project_number": "289113272999",
+    "firebase_url": "https://bluepopadminapp.firebaseio.com",
+    "project_id": "bluepopadminapp",
+    "storage_bucket": "bluepopadminapp.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:289113272999:android:e4544059ffd9ba45",
+        "android_client_info": {
+          "package_name": "com.example.adminapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWeXQXlyACBv5IuiH6y73dhHfT_ZLMpFg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "289113272999-nre00a817imj4q0j4v7vmpu6h48h20ub.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
