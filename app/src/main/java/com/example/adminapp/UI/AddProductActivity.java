@@ -3,6 +3,7 @@ package com.example.adminapp.UI;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.content.BroadcastReceiver;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -15,21 +16,34 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.example.adminapp.Adapter.RecyclerAdapter;
 import com.example.adminapp.Model.MyDownloadService;
 import com.example.adminapp.Model.MyUploadService;
+import com.example.adminapp.Model.Shoes;
+import com.example.adminapp.Model.Util;
 import com.example.adminapp.R;
+import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.AuthResult;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 import java.util.Locale;
 
+import butterknife.BindView;
+import butterknife.ButterKnife;
+
 public class AddProductActivity extends AppCompatActivity implements View.OnClickListener {
+
     private static final String TAG = "Storage#MainActivity";
 
     private static final int RC_TAKE_PICTURE = 101;
@@ -44,19 +58,101 @@ public class AddProductActivity extends AppCompatActivity implements View.OnClic
     private Uri mDownloadUrl = null;
     private Uri mFileUri = null;
 
-    @Override
+
+    @BindView(R.id.eTxtId)
+    EditText eTxtId;
+
+    @BindView(R.id.eTxtSize)
+    EditText eTxtSize;
+
+    @BindView(R.id.eTxtName)
+    EditText eTxtName;
+
+    @BindView(R.id.eTxtPrice)
+    EditText eTxtPrice;
+
+    @BindView(R.id.eTxtColor)
+    EditText eTxtColor;
+
+    @BindView(R.id.buttonAddProduct)
+    Button buttonAddProduct;
+
+
+    Shoes shoes;
+    ContentResolver resolver;
+
+    boolean updateMode;
+    FirebaseAuth auth;
+    FirebaseUser firebaseUser;
+    FirebaseFirestore db;
+
+    RecyclerAdapter recyclerAdapter;
+    ProgressDialog progressDialog;
+
+    void initViews(){
+
+        resolver = getContentResolver();
+
+        auth = FirebaseAuth.getInstance();
+        db = FirebaseFirestore.getInstance();
+        firebaseUser = auth.getCurrentUser();
+
+        shoes = new Shoes();
+        progressDialog = new ProgressDialog(this);
+        progressDialog.setMessage("Please Wait..");
+        progressDialog.setCancelable(false);
+
+        buttonAddProduct.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                shoes.id = eTxtId.getText().toString();
+                shoes.size = eTxtSize.getText().toString();
+                shoes.name = eTxtName.getText().toString();
+                shoes.price = eTxtPrice.getText().toString();
+                shoes.color = eTxtColor.getText().toString();
+
+                if(Util.isInternetConnected(AddProductActivity.this)) {
+                    progressDialog.show();
+                    saveProductInFirebase();
+                }else{
+                    Toast.makeText(AddProductActivity.this,"Please Connect to Internet",Toast.LENGTH_LONG).show();
+                }
+            }
+        });
+
+        Intent rcv = getIntent();
+        updateMode = rcv.hasExtra("keyShoes");
+
+        if(updateMode){
+            shoes = (Shoes) rcv.getSerializableExtra("keyShoes");
+            eTxtId.setText(shoes.id);
+            eTxtSize.setText(shoes.size);
+            eTxtName.setText(shoes.name);
+            eTxtPrice.setText(shoes.price);
+            eTxtColor.setText(shoes.color);
+            buttonAddProduct.setText("Update Products");
+
+        }
+    }
+
+        @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_add_product);
         getSupportActionBar().setTitle("Add Products");
 
-        // Initialize Firebase Auth
-         mAuth = FirebaseAuth.getInstance();
+            ButterKnife.bind(this);
+            initViews();
 
-        // Click listeners
+           // Initialize Firebase Auth
+            mAuth = FirebaseAuth.getInstance();
+
+
+            // Click listeners
         findViewById(R.id.buttonCamera).setOnClickListener(this);
         findViewById(R.id.buttonSignIn).setOnClickListener(this);
         findViewById(R.id.buttonDownload).setOnClickListener(this);
+
 
         // Restore instance state
         if (savedInstanceState != null){
@@ -99,6 +195,7 @@ public class AddProductActivity extends AppCompatActivity implements View.OnClic
 
                          break;
                  }
+
                  }
 
              };
@@ -316,14 +413,61 @@ public class AddProductActivity extends AppCompatActivity implements View.OnClic
 
     @Override
     public void onClick(View v) {
+
         int i = v.getId();
 
-        if (i == R.id.buttonCamera){
+        if (i == R.id.buttonCamera) {
             launchCamera();
-        }else if (i == R.id.buttonSignIn){
+        } else if (i == R.id.buttonSignIn) {
             signInAnonymously();
-        }else if (i == R.id.buttonDownload){
+        } else if (i == R.id.buttonDownload) {
             beingDownload();
+        }
+    }
+
+    void clearFields(){
+        eTxtId.setText("");
+        eTxtSize.setText("");
+        eTxtName.setText("");
+        eTxtPrice.setText("");
+        eTxtColor.setText("");
+    }
+
+    void saveProductInFirebase() {
+
+        if(updateMode){
+
+            db.collection("Products").document(shoes.docId)
+                    .set(shoes)
+                    .addOnCompleteListener(this, new OnCompleteListener<Void>() {
+                        @Override
+                        public void onComplete(@NonNull Task<Void> task) {
+                            if(task.isComplete()){
+                                Toast.makeText(AddProductActivity.this,"Updation Finished",Toast.LENGTH_LONG).show();
+                                progressDialog.dismiss();
+                                recyclerAdapter.notifyDataSetChanged();
+                                finish();
+                            }else{
+                                Toast.makeText(AddProductActivity.this,"Updation Failed",Toast.LENGTH_LONG).show();
+                            }
+
+                        }
+                    });
+
+        }else {
+
+            db.collection("Products").add(shoes)
+                    .addOnCompleteListener(this, new OnCompleteListener<DocumentReference>() {
+                        @Override
+                        public void onComplete(@NonNull Task<DocumentReference> task) {
+                            if(task.isComplete()){
+                                Toast.makeText(AddProductActivity.this,"Product saved ",Toast.LENGTH_LONG).show();
+                                progressDialog.dismiss();
+                                clearFields();
+                            }
+                        }
+                    });
+
         }
     }
 }

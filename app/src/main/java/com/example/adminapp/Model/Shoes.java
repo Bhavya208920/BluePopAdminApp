@@ -9,6 +9,7 @@ public class Shoes implements Serializable {
     public String name;
     public String price;
     public String color;
+    public String docId;
 
     public Shoes(){
 

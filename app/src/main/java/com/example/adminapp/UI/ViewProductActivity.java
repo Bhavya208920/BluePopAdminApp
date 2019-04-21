@@ -1,7 +1,10 @@
 package com.example.adminapp.UI;
 
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.support.annotation.NonNull;
 import android.support.v7.app.ActionBar;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.GridLayoutManager;
@@ -13,13 +16,23 @@ import android.view.MenuItem;
 import android.widget.CompoundButton;
 import android.widget.RelativeLayout;
 import android.widget.Switch;
+import android.widget.Toast;
 
 import com.example.adminapp.Adapter.RecyclerAdapter;
 import com.example.adminapp.Listener.OnRecyclerItemClickListener;
 import com.example.adminapp.Model.Shoes;
+import com.example.adminapp.Model.Util;
 import com.example.adminapp.R;
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QuerySnapshot;
 
 import java.util.ArrayList;
+import java.util.List;
 
 public class ViewProductActivity extends AppCompatActivity implements OnRecyclerItemClickListener {
 
@@ -33,6 +46,12 @@ public class ViewProductActivity extends AppCompatActivity implements OnRecycler
 
     int position;
     Shoes shoes;
+
+    FirebaseAuth auth;
+    FirebaseFirestore db;
+    FirebaseUser firebaseUser;
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -43,55 +62,142 @@ public class ViewProductActivity extends AppCompatActivity implements OnRecycler
         recyclerView = findViewById(R.id.recyclerView);
         list = new ArrayList<>();
 
-        getSupportActionBar().setDisplayOptions(ActionBar.DISPLAY_SHOW_CUSTOM|ActionBar.DISPLAY_SHOW_HOME|ActionBar.DISPLAY_SHOW_TITLE);
+        auth = FirebaseAuth.getInstance();
+        db = FirebaseFirestore.getInstance();
+        firebaseUser = auth.getCurrentUser();
 
-
-        Shoes shoes = new Shoes(R.drawable.ic_launcher_background, "Casual", "4335", "Rs.400", "Black", "6");
-        Shoes shoes1 = new Shoes(R.drawable.ic_launcher_background, "Slippers", "566", "Rs.250", "Brown", "6");
-
-        list.add(shoes);
-        list.add(shoes1);
-
-        recyclerAdapter = new RecyclerAdapter(ViewProductActivity.this, R.layout.list_item, list);
-        recyclerAdapter.setOnRecyclerItemClickListener((OnRecyclerItemClickListener) this);
-        LinearLayoutManager linearLayoutManager = new LinearLayoutManager(ViewProductActivity.this);
-        recyclerView.setLayoutManager(linearLayoutManager);
-
-        recyclerView.setAdapter(recyclerAdapter);
+        if(Util.isInternetConnected(this)) {
+            fetchProductsFromFirebase();
+        }else{
+            Toast.makeText(ViewProductActivity.this,"Please Connect to Internet and Try Again",Toast.LENGTH_LONG).show();
+        }
     }
 
-    @Override
+    void fetchProductsFromFirebase() {
+        db.collection("Products").get()
+                .addOnCompleteListener(this, new OnCompleteListener<QuerySnapshot>() {
+                    @Override
+                    public void onComplete(@NonNull Task<QuerySnapshot> task) {
+                        if (task.isComplete()) {
+
+                            list = new ArrayList<>();
+
+                            QuerySnapshot querySnapshot = task.getResult();
+                            List<DocumentSnapshot> documentSnapshots = querySnapshot.getDocuments();
+
+                            for (DocumentSnapshot snapshot : documentSnapshots) {
+                                String docId = snapshot.getId();
+                                Shoes shoes = snapshot.toObject(Shoes.class);
+                                shoes.docId = docId;
+                                list.add(shoes);
+                            }
+
+                            getSupportActionBar().setTitle("Total Products: ");
+
+                            recyclerAdapter = new RecyclerAdapter(ViewProductActivity.this, R.layout.bluepop_item, list);
+
+                            recyclerAdapter.setOnRecyclerItemClickListener(ViewProductActivity.this);
+
+                            LinearLayoutManager linearLayoutManager = new LinearLayoutManager(ViewProductActivity.this);
+                            recyclerView.setLayoutManager(linearLayoutManager);
+                            recyclerView.setAdapter(recyclerAdapter);
+
+                        } else {
+                            Toast.makeText(ViewProductActivity.this, "Some Error", Toast.LENGTH_LONG).show();
+                        }
+                    }
+                });
+    }
+
+
+    void showProductDetails(){
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(shoes.name+" Details:");
+        builder.setMessage(shoes.toString());
+        builder.setPositiveButton("Done",null);
+        AlertDialog dialog = builder.create();
+        dialog.show();
+
+    }
+
+    void deleteProductFromFirebase() {
+        db.collection("Products").document(shoes.docId)
+                .delete()
+                .addOnCompleteListener(this, new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isComplete()) {
+                            Toast.makeText(ViewProductActivity.this, "Deletion Finished", Toast.LENGTH_LONG).show();
+                            list.remove(position);
+                            recyclerAdapter.notifyDataSetChanged();// Refresh Your RecyclerView
+                        } else {
+                            Toast.makeText(ViewProductActivity.this, "Deletion Failed", Toast.LENGTH_LONG).show();
+                        }
+
+                    }
+                });
+    }
+
+    void askForDeletion(){
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Delete "+shoes.name);
+        builder.setMessage("Are You Sure ?");
+        builder.setPositiveButton("Delete", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                deleteProductFromFirebase();
+            }
+        });
+        builder.setNegativeButton("Cancel",null);
+        AlertDialog dialog = builder.create();
+        dialog.show();
+    }
+
+
+    void showOptions(){
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        String[] items = {"View "+shoes.name, "Update "+shoes.name, "Delete "+shoes.name, "Cancel"};
+        builder.setItems(items, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                switch (which){
+                    case 0:
+                        showProductDetails();
+                        break;
+
+                    case 1:
+
+                        Intent intent = new Intent(ViewProductActivity.this, AddProductActivity.class);
+                        intent.putExtra("keyShoes",shoes);
+                        startActivity(intent);
+                        finish();
+                        break;
+
+                    case 2:
+                        askForDeletion();
+
+                        break;
+
+                }
+
+            }
+        });
+
+        //builder.setCancelable(false);
+        recyclerAdapter.notifyDataSetChanged();
+        AlertDialog dialog = builder.create();
+        dialog.show();
+    }
+
+        @Override
     public void onItemClick(int position) {
         this.position = position;
         shoes = list.get(position);
         Intent intent = new Intent(ViewProductActivity.this,DesActivity.class);
         startActivity(intent);
+
+            showOptions();
+
     }
 
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        MenuInflater menuInflater = getMenuInflater();
-        menuInflater.inflate(R.menu.main_menu,menu);
-        MenuItem item = menu.findItem(R.id.switchBu);
-        item.setActionView(R.layout.switch_lay);
-
-        aSwitch = item.getActionView().findViewById(R.id.switchForActionBar);
-        aSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if(isChecked){
-                    GridLayoutManager gridLayoutManager = new GridLayoutManager(ViewProductActivity.this,2);
-                    recyclerView.setLayoutManager(gridLayoutManager);
-
-                    recyclerView.setAdapter(recyclerAdapter);
-                }else{
-                    LinearLayoutManager linearLayoutManager = new LinearLayoutManager(ViewProductActivity.this);
-                    recyclerView.setLayoutManager(linearLayoutManager);
-
-                    recyclerView.setAdapter(recyclerAdapter);
-                }
-            }
-        });
-        return true;
-    }
 }
